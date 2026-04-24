@@ -181,16 +181,75 @@ int main(){
                 break;
             }
             case 0x33: { // OP
-                switch (funct3) {
-                    case 0: val = (funct7==0x20)? (x[rs1] - x[rs2]) : (x[rs1] + x[rs2]); break; // SUB/ADD
-                    case 1: val = x[rs1] << (x[rs2] & 0x1f); break; // SLL
-                    case 2: val = (int32_t)x[rs1] < (int32_t)x[rs2]; break; // SLT
-                    case 3: val = x[rs1] < x[rs2]; break; // SLTU
-                    case 4: val = x[rs1] ^ x[rs2]; break; // XOR
-                    case 5: val = (funct7==0x20)? (uint32_t)((int32_t)x[rs1] >> (x[rs2]&0x1f)) : (x[rs1] >> (x[rs2]&0x1f)); break; // SRA/SRL
-                    case 6: val = x[rs1] | x[rs2]; break; // OR
-                    case 7: val = x[rs1] & x[rs2]; break; // AND
-                    default: break;
+                if (funct7 == 0x01) { // M extension
+                    switch (funct3) {
+                        case 0: { // MUL
+                            val = (uint32_t)((int64_t)(int32_t)x[rs1] * (int64_t)(int32_t)x[rs2]);
+                            break;
+                        }
+                        case 1: { // MULH
+                            int64_t a = (int64_t)(int32_t)x[rs1];
+                            int64_t b = (int64_t)(int32_t)x[rs2];
+                            int64_t prod = a * b;
+                            val = (uint32_t)((uint64_t)prod >> 32);
+                            break;
+                        }
+                        case 2: { // MULHSU
+                            int64_t a = (int64_t)(int32_t)x[rs1];
+                            uint64_t b = (uint64_t)x[rs2];
+                            __int128 prod = (__int128)a * (__int128)b;
+                            val = (uint32_t)((uint64_t)(prod >> 32));
+                            break;
+                        }
+                        case 3: { // MULHU
+                            uint64_t a = (uint64_t)x[rs1];
+                            uint64_t b = (uint64_t)x[rs2];
+                            __int128 prod = (__int128)a * (__int128)b;
+                            val = (uint32_t)((uint64_t)(prod >> 32));
+                            break;
+                        }
+                        case 4: { // DIV
+                            int32_t a = (int32_t)x[rs1];
+                            int32_t b = (int32_t)x[rs2];
+                            if (b == 0) val = 0xffffffffu;
+                            else if (a == INT32_MIN && b == -1) val = (uint32_t)INT32_MIN;
+                            else val = (uint32_t)(a / b);
+                            break;
+                        }
+                        case 5: { // DIVU
+                            uint32_t a = x[rs1];
+                            uint32_t b = x[rs2];
+                            val = (b == 0)? 0xffffffffu : (a / b);
+                            break;
+                        }
+                        case 6: { // REM
+                            int32_t a = (int32_t)x[rs1];
+                            int32_t b = (int32_t)x[rs2];
+                            if (b == 0) val = (uint32_t)a;
+                            else if (a == INT32_MIN && b == -1) val = 0;
+                            else val = (uint32_t)(a % b);
+                            break;
+                        }
+                        case 7: { // REMU
+                            uint32_t a = x[rs1];
+                            uint32_t b = x[rs2];
+                            val = (b == 0)? a : (a % b);
+                            break;
+                        }
+                        default: break;
+                    }
+                } else {
+                    switch (funct3) {
+                        case 0: val = (funct7==0x20)? (x[rs1] - x[rs2]) : (x[rs1] + x[rs2]); break; // SUB/ADD
+                        case 1: val = x[rs1] << (x[rs2] & 0x1f); break; // SLL
+                        case 2: val = (int32_t)x[rs1] < (int32_t)x[rs2]; break; // SLT
+                        case 3: val = x[rs1] < x[rs2]; break; // SLTU
+                        case 4: val = x[rs1] ^ x[rs2]; break; // XOR
+                        case 5: val = (funct7==0x20)? (uint32_t)((int32_t)x[rs1] >> (x[rs2]&0x1f)) : (x[rs1] >> (x[rs2]&0x1f)); break; // SRA/SRL
+                        case 6: val = x[rs1] | x[rs2]; break; // OR
+                        case 7: val = x[rs1] & x[rs2]; break; // AND
+                        default: break;
+                    }
                 }
                 x[rd] = val;
                 break;
