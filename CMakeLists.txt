@@ -10,6 +10,6 @@ add_executable(code src/main.cpp)
 if (MSVC)
   target_compile_options(code PRIVATE /O2)
 else()
-  target_compile_options(code PRIVATE -O2 -pipe -static -s)
-  target_link_options(code PRIVATE -static -s)
+  target_compile_options(code PRIVATE -O2 -pipe -s)
+  # Avoid static linking for portability in OJ environment
 endif()
