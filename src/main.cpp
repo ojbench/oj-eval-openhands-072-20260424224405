@@ -311,7 +311,6 @@ int main(){
         pc = next_pc;
         if (want_exit) { cout << (int32_t)x[10]; printed = 1; return 0; }
     }
-    // If we exit loop without hitting exit ecall, print a0 for best effort
-    if (!printed) cout << (int32_t)x[10];
+    // Program ended without explicit exit; do not print anything further
     return 0;
 }
