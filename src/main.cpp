@@ -36,22 +36,30 @@ int main(){
     // Load .data format: lines with "@<hexaddr>" then hex bytes
     Mem mem;
     uint32_t cur = 0;
+    uint32_t min_addr = 0xffffffffu, max_addr = 0;
     string s;
     while (cin >> s) {
         if (!s.empty() && s[0]=='@') {
             // address
             cur = (uint32_t)stoul(s.substr(1), nullptr, 16);
+            min_addr = min(min_addr, cur);
         } else {
             // byte
             if (s.size()>=2) {
                 uint8_t v = (uint8_t)stoul(s, nullptr, 16);
-                mem.wb(cur++, v);
+                mem.wb(cur, v);
+                max_addr = max(max_addr, cur);
+                ++cur;
             }
         }
     }
 
     uint32_t x[32]{}; // integer registers
-    uint32_t pc = 0;
+    uint32_t pc = (min_addr==0xffffffffu)? 0u : min_addr;
+    // Initialize stack pointer to just above program region
+    uint32_t stack_base = (max_addr==0? 0x00100000u : (max_addr + 0x00010000u));
+    if (stack_base < 0x00100000u) stack_base = 0x00100000u; // at least 1 MiB
+    x[2] = stack_base & ~0xfu; // x2 = sp, 16-byte aligned
     auto LOAD8 = [&](uint32_t a){ return mem.rb(a); };
     auto LOAD16 = [&](uint32_t a){ return (uint16_t)(mem.rb(a) | (mem.rb(a+1)<<8)); };
     auto LOAD32 = [&](uint32_t a){ return mem.rl(a); };
@@ -59,7 +67,7 @@ int main(){
     auto STORE16 = [&](uint32_t a, uint16_t v){ mem.ww(a,v); };
     auto STORE32 = [&](uint32_t a, uint32_t v){ mem.wl(a,v); };
 
-    const uint64_t MAX_STEPS = 50000000ull; // cap to avoid infinite loops
+    const uint64_t MAX_STEPS = 200000000ull; // cap to avoid infinite loops, allow longer programs
     uint64_t steps = 0;
     auto get_imm_i = [&](uint32_t ins){ return sext(ins>>20, 12); };
     auto get_imm_s = [&](uint32_t ins){
@@ -198,6 +206,8 @@ int main(){
                         cout << (int32_t)a0;
                         printed = 1;
                         return 0;
+                    } else if (a7 == 10u) { // print char in a0 (commonly used)
+                        cout << (char)(a0 & 0xff);
                     }
                     // Other syscalls unimplemented; treat as no-op
                 }
