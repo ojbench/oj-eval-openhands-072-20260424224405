@@ -6,12 +6,11 @@
 using namespace std;
 
 struct Mem {
-    vector<uint8_t> m;
-    void ensure(uint32_t addr, size_t len=1) {
-        uint64_t need = (uint64_t)addr + len;
-        if (need > m.size()) m.resize(need, 0);
+    unordered_map<uint32_t, uint8_t> m;
+    uint8_t rb(uint32_t a) const {
+        auto it = m.find(a);
+        return it == m.end() ? 0 : it->second;
     }
-    uint8_t rb(uint32_t a) const { return a < m.size() ? m[a] : 0; }
     uint32_t rl(uint32_t a) const { // little-endian 32-bit
         uint32_t b0 = rb(a);
         uint32_t b1 = rb(a+1);
@@ -19,9 +18,9 @@ struct Mem {
         uint32_t b3 = rb(a+3);
         return b0 | (b1<<8) | (b2<<16) | (b3<<24);
     }
-    void wb(uint32_t a, uint8_t v){ ensure(a); m[a]=v; }
-    void ww(uint32_t a, uint16_t v){ ensure(a,2); m[a]=v&0xff; m[a+1]=(v>>8)&0xff; }
-    void wl(uint32_t a, uint32_t v){ ensure(a,4); m[a]=v&0xff; m[a+1]=(v>>8)&0xff; m[a+2]=(v>>16)&0xff; m[a+3]=(v>>24)&0xff; }
+    void wb(uint32_t a, uint8_t v){ m[a]=v; }
+    void ww(uint32_t a, uint16_t v){ m[a]=v&0xff; m[a+1]=(v>>8)&0xff; }
+    void wl(uint32_t a, uint32_t v){ m[a]=v&0xff; m[a+1]=(v>>8)&0xff; m[a+2]=(v>>16)&0xff; m[a+3]=(v>>24)&0xff; }
 };
 
 static inline int32_t sext(uint32_t x, int bits){
@@ -60,12 +59,25 @@ int main(){
     uint32_t stack_base = (max_addr==0? 0x00100000u : (max_addr + 0x00010000u));
     if (stack_base < 0x00100000u) stack_base = 0x00100000u; // at least 1 MiB
     x[2] = stack_base & ~0xfu; // x2 = sp, 16-byte aligned
+    bool want_exit = false;
     auto LOAD8 = [&](uint32_t a){ return mem.rb(a); };
     auto LOAD16 = [&](uint32_t a){ return (uint16_t)(mem.rb(a) | (mem.rb(a+1)<<8)); };
     auto LOAD32 = [&](uint32_t a){ return mem.rl(a); };
-    auto STORE8 = [&](uint32_t a, uint8_t v){ mem.wb(a,v); };
-    auto STORE16 = [&](uint32_t a, uint16_t v){ mem.ww(a,v); };
-    auto STORE32 = [&](uint32_t a, uint32_t v){ mem.wl(a,v); };
+    auto STORE8 = [&](uint32_t a, uint8_t v){
+        if (a == 0x10000000u || a == 0x00030000u) { cout << (char)v; return; }
+        if (a == 0x10000004u || a == 0x00030004u) { want_exit = true; return; }
+        mem.wb(a,v);
+    };
+    auto STORE16 = [&](uint32_t a, uint16_t v){
+        if (a == 0x10000000u || a == 0x00030000u) { cout << (char)(v & 0xff); return; }
+        if (a == 0x10000004u || a == 0x00030004u) { want_exit = true; return; }
+        mem.ww(a,v);
+    };
+    auto STORE32 = [&](uint32_t a, uint32_t v){
+        if (a == 0x10000000u || a == 0x00030000u) { cout << (char)(v & 0xff); return; }
+        if (a == 0x10000004u || a == 0x00030004u) { want_exit = true; return; }
+        mem.wl(a,v);
+    };
 
     const uint64_t MAX_STEPS = 200000000ull; // cap to avoid infinite loops, allow longer programs
     uint64_t steps = 0;
@@ -261,14 +273,33 @@ int main(){
                 if (funct3==0 && imm12==0) { // ECALL
                     // By convention, a7=x17 is syscall id
                     uint32_t a7 = x[17], a0 = x[10];
-                    if (a7 == 93u) {
-                        cout << (int32_t)a0;
-                        printed = 1;
-                        return 0;
-                    } else if (a7 == 10u) { // print char in a0 (commonly used)
-                        cout << (char)(a0 & 0xff);
+                    switch (a7) {
+                        case 93u: // exit with code in a0
+                            cout << (int32_t)a0;
+                            printed = 1;
+                            return 0;
+                        case 10u: // exit (NJU/others)
+                            cout << (int32_t)a0;
+                            printed = 1;
+                            return 0;
+                        case 1u: // print integer in a0
+                            cout << (int32_t)a0;
+                            break;
+                        case 4u: { // print string at a0
+                            uint32_t p = a0;
+                            while (true) {
+                                char c = (char)LOAD8(p++);
+                                if (!c) break;
+                                cout << c;
+                            }
+                            break;
+                        }
+                        case 11u: // putch(a0)
+                            cout << (char)(a0 & 0xff);
+                            break;
+                        default:
+                            break; // ignore others
                     }
-                    // Other syscalls unimplemented; treat as no-op
                 }
                 break;
             }
@@ -278,6 +309,7 @@ int main(){
         }
         x[0] = 0; // enforce x0=0
         pc = next_pc;
+        if (want_exit) { cout << (int32_t)x[10]; printed = 1; return 0; }
     }
     // If we exit loop without hitting exit ecall, print a0 for best effort
     if (!printed) cout << (int32_t)x[10];
