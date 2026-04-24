@@ -274,13 +274,13 @@ int main(){
                     // By convention, a7=x17 is syscall id
                     uint32_t a7 = x[17], a0 = x[10];
                     switch (a7) {
-                        case 93u: // exit with code in a0
-                            cout << (int32_t)a0;
-                            printed = 1;
+                        case 93u: // exit: print result and newline
+                            cout << (int32_t)a0 << '\n';
+                            cout.flush();
                             return 0;
-                        case 10u: // exit (NJU/others)
-                            cout << (int32_t)a0;
-                            printed = 1;
+                        case 10u: // exit: print result and newline
+                            cout << (int32_t)a0 << '\n';
+                            cout.flush();
                             return 0;
                         case 1u: // print integer in a0
                             cout << (int32_t)a0;
